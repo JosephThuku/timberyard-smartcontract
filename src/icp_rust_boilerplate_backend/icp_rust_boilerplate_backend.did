@@ -1,0 +1,49 @@
+type Result = variant { Ok : Sales; Err : text };
+type Result_1 = variant { Ok : Timber; Err : text };
+type Sales = record {
+  id : nat64;
+  updated_at : opt nat64;
+  timber_id : nat64;
+  created_at : nat64;
+  quantity : nat64;
+  price : nat64;
+};
+type SalesPayload = record {
+  timber_id : nat64;
+  quantity : nat64;
+  price : nat64;
+};
+type SalesUpdatePayload = record {
+  id : nat64;
+  quantity : nat64;
+  price : nat64;
+};
+type Timber = record {
+  id : nat64;
+  updated_at : opt nat64;
+  created_at : nat64;
+  quantity : nat64;
+  timber_size : text;
+  timber_type : text;
+};
+type TimberPayload = record {
+  quantity : nat64;
+  timber_size : text;
+  timber_type : text;
+};
+type TimberUpdatePayload = record {
+  id : nat64;
+  quantity : nat64;
+  timber_size : text;
+  timber_type : text;
+};
+service : {
+  add_sales : (SalesPayload) -> (opt Sales);
+  add_timber : (TimberPayload) -> (opt Timber);
+  delete_sales : (nat64) -> (Result);
+  delete_timber : (nat64) -> (Result_1);
+  get_sales : (nat64) -> (Result) query;
+  get_timber : (nat64) -> (Result_1) query;
+  update_sales : (nat64, SalesUpdatePayload) -> (Result);
+  update_timber : (nat64, TimberUpdatePayload) -> (Result_1);
+}
