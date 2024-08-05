@@ -38,8 +38,8 @@ type TimberUpdatePayload = record {
   timber_type : text;
 };
 service : {
-  add_sales : (SalesPayload) -> (opt Sales);
-  add_timber : (TimberPayload) -> (opt Timber);
+  add_sales : (SalesPayload) -> (Result);
+  add_timber : (TimberPayload) -> (Result_1);
   delete_sales : (nat64) -> (Result);
   delete_timber : (nat64) -> (Result_1);
   get_sales : (nat64) -> (Result) query;

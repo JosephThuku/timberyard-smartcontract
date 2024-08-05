@@ -1,5 +1,3 @@
-//a canister to perform basic CRUD operations on timberyard management
-
 #[macro_use]
 extern crate serde;
 use candid::{Decode, Encode};
@@ -8,35 +6,17 @@ use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemor
 use ic_stable_structures::{BoundedStorable, Cell, DefaultMemoryImpl, StableBTreeMap, Storable};
 use std::{borrow::Cow, cell::RefCell};
 
-
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 type IdCell = Cell<u64, Memory>;
 
+// Define the valid timber types and sizes as constants
+const VALID_TIMBER_TYPES: &[&str] = &["cyprus", "pine", "oak", "cedar", "spruce"];
+const VALID_TIMBER_SIZES: &[&str] = &[
+    "2x4", "2x6", "2x8", "2x10", "3x2", "3x4", "4x2", "4x4", "4x6", "6x2", "6x4", "8x2", "8x4",
+    "10x2", "10x4",
+];
+
 #[derive(candid::CandidType, Clone, Serialize, Deserialize, Default)]
-//we can only have the following timber types:
-//1. cyprus
-//2. pine
-//3. oak
-//4. cedar
-//5. spruce
-
-//we can only have the following timber sizes:
-//1. 2x4
-//2. 2x6
-//3. 2x8
-//4. 2x10
-//5. 3x2
-//6. 3x4
-//7. 4x2
-//8. 4x4
-//9. 4x6
-//10. 6x2
-//11. 6x4
-//12. 8x2
-//13. 8x4
-//14. 10x2
-//15. 10x4
-
 struct Timber {
     id: u64,
     timber_type: String,
@@ -46,7 +26,6 @@ struct Timber {
     updated_at: Option<u64>,
 }
 
-//sales struct
 #[derive(candid::CandidType, Clone, Serialize, Deserialize, Default)]
 struct Sales {
     id: u64,
@@ -57,43 +36,39 @@ struct Sales {
     updated_at: Option<u64>,
 }
 
-// a trait that must be implemented for a struct that is stored in a stable struct
+// Implement the Storable and BoundedStorable traits for the Timber struct
 impl Storable for Timber {
-    //converts the struct to bytes
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
-        // attempt to serialize the struct using the Encode! macro
+    fn to_bytes(&self) -> Cow<[u8]> {
         Cow::Owned(Encode!(self).unwrap())
     }
 
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
         Decode!(bytes.as_ref(), Self).unwrap()
     }
 }
 
-// another trait that must be implemented for a struct that is stored in a stable struct
 impl BoundedStorable for Timber {
     const MAX_SIZE: u32 = 1024;
     const IS_FIXED_SIZE: bool = false;
 }
 
-// a trait that must be implemented for a struct that is stored in a stable struct
+// Implement the Storable and BoundedStorable traits for the Sales struct
 impl Storable for Sales {
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+    fn to_bytes(&self) -> Cow<[u8]> {
         Cow::Owned(Encode!(self).unwrap())
     }
 
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
         Decode!(bytes.as_ref(), Self).unwrap()
     }
 }
 
-// another trait that must be implemented for a struct that is stored in a stable struct
 impl BoundedStorable for Sales {
     const MAX_SIZE: u32 = 1024;
     const IS_FIXED_SIZE: bool = false;
 }
 
-//thread local storage for the memory manager
+// Thread-local storage for the memory manager and storage structures
 thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> = RefCell::new(
         MemoryManager::init(DefaultMemoryImpl::default())
@@ -115,7 +90,7 @@ thread_local! {
     ));
 }
 
-//a struct to hold the payload for the timber
+// Structs to hold payloads for timber and sales
 #[derive(candid::CandidType, Serialize, Deserialize, Default)]
 struct TimberPayload {
     timber_type: String,
@@ -123,7 +98,6 @@ struct TimberPayload {
     quantity: u64,
 }
 
-//a struct to hold the payload for the sales
 #[derive(candid::CandidType, Serialize, Deserialize, Default)]
 struct SalesPayload {
     timber_id: u64,
@@ -131,7 +105,6 @@ struct SalesPayload {
     price: u64,
 }
 
-//a struct to hold the payload for the sales
 #[derive(candid::CandidType, Serialize, Deserialize, Default)]
 struct SalesUpdatePayload {
     id: u64,
@@ -139,7 +112,6 @@ struct SalesUpdatePayload {
     price: u64,
 }
 
-//a struct to hold the payload for the timber
 #[derive(candid::CandidType, Serialize, Deserialize, Default)]
 struct TimberUpdatePayload {
     id: u64,
@@ -148,34 +120,56 @@ struct TimberUpdatePayload {
     quantity: u64,
 }
 
-//function to get a timber by id
+// Function to generate a new unique ID
+fn generate_unique_id() -> u64 {
+    ID_COUNTER
+        .with(|counter| {
+            let mut counter = counter.borrow_mut();
+            let id = *counter.get() + 1;
+            counter.set(id).expect("Failed to increment ID counter");
+            id
+        })
+}
+
+// Function to get a timber by id
 #[ic_cdk::query]
 fn get_timber(id: u64) -> Result<Timber, String> {
     match _get_timber(&id) {
         Some(timber) => Ok(timber),
-        None => Err(format!("a timber with id={} not found", id)),
+        None => Err(format!("Timber with id={} not found", id)),
     }
 }
 
-
-//function to get a sales by id
+// Function to get a sales by id
 #[ic_cdk::query]
 fn get_sales(id: u64) -> Result<Sales, String> {
     match _get_sales(&id) {
         Some(sales) => Ok(sales),
-        None => Err(format!("a sales with id={} not found", id)),
+        None => Err(format!("Sales with id={} not found", id)),
     }
 }
 
-//function to add a timber
+// Function to add a timber with input validation
 #[ic_cdk::update]
-fn add_timber(timber: TimberPayload) -> Option<Timber> {
-    let id = ID_COUNTER
-        .with(|counter| {
-            let current_value = *counter.borrow().get();
-            counter.borrow_mut().set(current_value + 1)
-        })
-        .expect("cannot increment id counter");
+fn add_timber(timber: TimberPayload) -> Result<Timber, String> {
+    // Validate input
+    if !VALID_TIMBER_TYPES.contains(&timber.timber_type.as_str()) {
+        return Err(format!(
+            "Invalid timber type: {}. Valid types are: {:?}",
+            timber.timber_type, VALID_TIMBER_TYPES
+        ));
+    }
+    if !VALID_TIMBER_SIZES.contains(&timber.timber_size.as_str()) {
+        return Err(format!(
+            "Invalid timber size: {}. Valid sizes are: {:?}",
+            timber.timber_size, VALID_TIMBER_SIZES
+        ));
+    }
+    if timber.quantity == 0 {
+        return Err("Quantity must be greater than zero".to_string());
+    }
+
+    let id = generate_unique_id();
     let timber = Timber {
         id,
         timber_type: timber.timber_type,
@@ -185,18 +179,27 @@ fn add_timber(timber: TimberPayload) -> Option<Timber> {
         updated_at: None,
     };
     do_insert_timber(&timber);
-    Some(timber)
+    Ok(timber)
 }
 
-//function to add a sales
+// Function to add a sales record with input validation
 #[ic_cdk::update]
-fn add_sales(sales: SalesPayload) -> Option<Sales> {
-    let id = ID_COUNTER
-        .with(|counter| {
-            let current_value = *counter.borrow().get();
-            counter.borrow_mut().set(current_value + 1)
-        })
-        .expect("cannot increment id counter");
+fn add_sales(sales: SalesPayload) -> Result<Sales, String> {
+    // Validate input
+    if sales.quantity == 0 {
+        return Err("Quantity must be greater than zero".to_string());
+    }
+    if sales.price == 0 {
+        return Err("Price must be greater than zero".to_string());
+    }
+
+    // Check if timber_id exists
+    match _get_timber(&sales.timber_id) {
+        Some(_) => (),
+        None => return Err(format!("Timber with id={} not found", sales.timber_id)),
+    }
+
+    let id = generate_unique_id();
     let sales = Sales {
         id,
         timber_id: sales.timber_id,
@@ -206,12 +209,30 @@ fn add_sales(sales: SalesPayload) -> Option<Sales> {
         updated_at: None,
     };
     do_insert_sales(&sales);
-    Some(sales)
+    Ok(sales)
 }
 
-//function to update a timber
+// Function to update a timber with input validation
 #[ic_cdk::update]
 fn update_timber(id: u64, payload: TimberUpdatePayload) -> Result<Timber, String> {
+    // Validate input
+    if !VALID_TIMBER_TYPES.contains(&payload.timber_type.as_str()) {
+        return Err(format!(
+            "Invalid timber type: {}. Valid types are: {:?}",
+            payload.timber_type, VALID_TIMBER_TYPES
+        ));
+    }
+    if !VALID_TIMBER_SIZES.contains(&payload.timber_size.as_str()) {
+        return Err(format!(
+            "Invalid timber size: {}. Valid sizes are: {:?}",
+            payload.timber_size, VALID_TIMBER_SIZES
+        ));
+    }
+    if payload.quantity == 0 {
+        return Err("Quantity must be greater than zero".to_string());
+    }
+
+    // Update timber
     match TIMBER_STORAGE.with(|service| service.borrow().get(&id)) {
         Some(mut timber) => {
             timber.timber_type = payload.timber_type;
@@ -222,15 +243,24 @@ fn update_timber(id: u64, payload: TimberUpdatePayload) -> Result<Timber, String
             Ok(timber)
         }
         None => Err(format!(
-            "couldn't update a timber with id={}. timber not found",
+            "Couldn't update timber with id={}. Timber not found",
             id
         )),
     }
 }
 
-//function to update a sales
+// Function to update a sales record with input validation
 #[ic_cdk::update]
 fn update_sales(id: u64, payload: SalesUpdatePayload) -> Result<Sales, String> {
+    // Validate input
+    if payload.quantity == 0 {
+        return Err("Quantity must be greater than zero".to_string());
+    }
+    if payload.price == 0 {
+        return Err("Price must be greater than zero".to_string());
+    }
+
+    // Update sales
     match SALES_STORAGE.with(|service| service.borrow().get(&id)) {
         Some(mut sales) => {
             sales.quantity = payload.quantity;
@@ -240,13 +270,13 @@ fn update_sales(id: u64, payload: SalesUpdatePayload) -> Result<Sales, String> {
             Ok(sales)
         }
         None => Err(format!(
-            "couldn't update a sales with id={}. sales not found",
+            "Couldn't update sales with id={}. Sales not found",
             id
         )),
     }
 }
 
-//function to delete a timber
+// Function to delete a timber
 #[ic_cdk::update]
 fn delete_timber(id: u64) -> Result<Timber, String> {
     match TIMBER_STORAGE.with(|service| service.borrow().get(&id)) {
@@ -255,13 +285,13 @@ fn delete_timber(id: u64) -> Result<Timber, String> {
             Ok(timber)
         }
         None => Err(format!(
-            "couldn't delete a timber with id={}. timber not found",
+            "Couldn't delete timber with id={}. Timber not found",
             id
         )),
     }
 }
 
-//function to delete a sales
+// Function to delete a sales record
 #[ic_cdk::update]
 fn delete_sales(id: u64) -> Result<Sales, String> {
     match SALES_STORAGE.with(|service| service.borrow().get(&id)) {
@@ -270,34 +300,32 @@ fn delete_sales(id: u64) -> Result<Sales, String> {
             Ok(sales)
         }
         None => Err(format!(
-            "couldn't delete a sales with id={}. sales not found",
+            "Couldn't delete sales with id={}. Sales not found",
             id
         )),
     }
 }
 
-
-//helper method to perform insert.
+// Helper method to perform insert operation for timber
 fn do_insert_timber(timber: &Timber) {
     TIMBER_STORAGE.with(|service| service.borrow_mut().insert(timber.id, timber.clone()));
 }
 
-//helper method to perform insert.
+// Helper method to perform insert operation for sales
 fn do_insert_sales(sales: &Sales) {
     SALES_STORAGE.with(|service| service.borrow_mut().insert(sales.id, sales.clone()));
 }
 
-//helper method to get a timber by id. used in get_timber/update_timber
+// Helper methods for querying data
+
 fn _get_timber(id: &u64) -> Option<Timber> {
     TIMBER_STORAGE.with(|service| service.borrow().get(id))
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_sales(id: &u64) -> Option<Sales> {
     SALES_STORAGE.with(|service| service.borrow().get(id))
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_timber_by_type(timber_type: &str) -> Vec<Timber> {
     TIMBER_STORAGE
         .with(|service| {
@@ -310,7 +338,6 @@ fn _get_timber_by_type(timber_type: &str) -> Vec<Timber> {
         })
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_timber_by_size(timber_size: &str) -> Vec<Timber> {
     TIMBER_STORAGE
         .with(|service| {
@@ -323,8 +350,6 @@ fn _get_timber_by_size(timber_size: &str) -> Vec<Timber> {
         })
 }
 
-
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_sales_by_timber_id(timber_id: &u64) -> Vec<Sales> {
     SALES_STORAGE
         .with(|service| {
@@ -337,7 +362,6 @@ fn _get_sales_by_timber_id(timber_id: &u64) -> Vec<Sales> {
         })
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_sales_by_price(price: &u64) -> Vec<Sales> {
     SALES_STORAGE
         .with(|service| {
@@ -350,7 +374,6 @@ fn _get_sales_by_price(price: &u64) -> Vec<Sales> {
         })
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_sales_by_quantity(quantity: &u64) -> Vec<Sales> {
     SALES_STORAGE
         .with(|service| {
@@ -363,17 +386,14 @@ fn _get_sales_by_quantity(quantity: &u64) -> Vec<Sales> {
         })
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_sales_by_id(id: &u64) -> Option<Sales> {
     SALES_STORAGE.with(|service| service.borrow().get(id))
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_timber_by_id(id: &u64) -> Option<Timber> {
     TIMBER_STORAGE.with(|service| service.borrow().get(id))
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_timber_by_quantity(quantity: &u64) -> Vec<Timber> {
     TIMBER_STORAGE
         .with(|service| {
@@ -386,8 +406,6 @@ fn _get_timber_by_quantity(quantity: &u64) -> Vec<Timber> {
         })
 }
 
-
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_timber_by_created_at(created_at: &u64) -> Vec<Timber> {
     TIMBER_STORAGE
         .with(|service| {
@@ -400,7 +418,6 @@ fn _get_timber_by_created_at(created_at: &u64) -> Vec<Timber> {
         })
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_sales_by_created_at(created_at: &u64) -> Vec<Sales> {
     SALES_STORAGE
         .with(|service| {
@@ -413,7 +430,6 @@ fn _get_sales_by_created_at(created_at: &u64) -> Vec<Sales> {
         })
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_timber_by_updated_at(updated_at: &u64) -> Vec<Timber> {
     TIMBER_STORAGE
         .with(|service| {
@@ -426,7 +442,6 @@ fn _get_timber_by_updated_at(updated_at: &u64) -> Vec<Timber> {
         })
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_sales_by_updated_at(updated_at: &u64) -> Vec<Sales> {
     SALES_STORAGE
         .with(|service| {
@@ -439,7 +454,6 @@ fn _get_sales_by_updated_at(updated_at: &u64) -> Vec<Sales> {
         })
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_timber_by_type_and_size(timber_type: &str, timber_size: &str) -> Vec<Timber> {
     TIMBER_STORAGE
         .with(|service| {
@@ -454,7 +468,6 @@ fn _get_timber_by_type_and_size(timber_type: &str, timber_size: &str) -> Vec<Tim
         })
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_timber_by_type_and_quantity(timber_type: &str, quantity: &u64) -> Vec<Timber> {
     TIMBER_STORAGE
         .with(|service| {
@@ -467,7 +480,6 @@ fn _get_timber_by_type_and_quantity(timber_type: &str, quantity: &u64) -> Vec<Ti
         })
 }
 
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_timber_by_size_and_quantity(timber_size: &str, quantity: &u64) -> Vec<Timber> {
     TIMBER_STORAGE
         .with(|service| {
@@ -480,8 +492,6 @@ fn _get_timber_by_size_and_quantity(timber_size: &str, quantity: &u64) -> Vec<Ti
         })
 }
 
-
-//helper method to get a sales by id. used in get_sales/update_sales
 fn _get_timber_by_type_and_size_and_quantity(timber_type: &str, timber_size: &str, quantity: &u64) -> Vec<Timber> {
     TIMBER_STORAGE
         .with(|service| {
@@ -496,7 +506,5 @@ fn _get_timber_by_type_and_size_and_quantity(timber_type: &str, timber_size: &st
         })
 }
 
-
-
-//need this to generate candid
+// Export the candid interface
 ic_cdk::export_candid!();
